@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#2a2522">
+  <title>Photostrips</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Photostrips</h1>
+    <form method="post" action="/logout"><button class="link" type="submit">Log out</button></form>
+  </header>
+
+  <main class="layout">
+    <section class="card area-photos">
+        <h2>1. Add photos</h2>
+        <label class="button primary" for="file-input">+ Add photos</label>
+        <input id="file-input" type="file" accept="image/*" multiple hidden>
+        <p class="hint" id="tray-hint">New photos fill the empty spots in order.</p>
+        <div id="tray" class="tray"></div>
+    </section>
+
+    <section class="card preview-card area-preview">
+      <h2>2. Arrange</h2>
+      <div id="strip-picker" class="strip-picker" hidden></div>
+      <p class="hint" id="arrange-hint">Tap a photo to move or zoom it.</p>
+      <div class="preview-wrap">
+        <canvas id="preview"></canvas>
+      </div>
+      <div id="slot-tools" class="slot-tools" hidden>
+        <button type="button" data-act="up">↑ Up</button>
+        <button type="button" data-act="down">↓ Down</button>
+        <button type="button" data-act="zoom-out">− Zoom</button>
+        <button type="button" data-act="zoom-in">+ Zoom</button>
+        <button type="button" data-act="clear">Remove</button>
+        <button type="button" data-act="done" class="primary">Done</button>
+      </div>
+      <button id="copy-to-all" class="button" type="button" hidden>Copy this strip to all 6</button>
+    </section>
+
+    <section class="card area-text">
+        <h2>3. Name and date</h2>
+        <label for="name">Name</label>
+        <input id="name" type="text" placeholder="The Williams" maxlength="60">
+        <label for="date">Date</label>
+        <input id="date" type="date">
+        <div class="row">
+          <div>
+            <label for="date-format">Date style</label>
+            <select id="date-format">
+              <option value="upper">NOVEMBER 15, 2019</option>
+              <option value="long">November 15, 2019</option>
+              <option value="dots">11.15.2019</option>
+              <option value="short">11/15/19</option>
+            </select>
+          </div>
+          <div>
+            <label for="font">Lettering</label>
+            <select id="font">
+              <option value="script">Elegant script</option>
+              <option value="serif">Classic</option>
+              <option value="typewriter">Typewriter</option>
+              <option value="modern">Modern</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="bg">Strip color</label>
+            <select id="bg">
+              <option value="white">White</option>
+              <option value="cream">Cream</option>
+              <option value="blush">Blush</option>
+              <option value="black">Black</option>
+            </select>
+          </div>
+          <div>
+            <label for="text-color">Text color</label>
+            <select id="text-color">
+              <option value="auto">Black / white</option>
+              <option value="gold">Gold</option>
+              <option value="navy">Navy</option>
+              <option value="rose">Rose</option>
+            </select>
+          </div>
+        </div>
+    </section>
+
+    <section class="card area-print">
+        <h2>4. Print</h2>
+        <label class="check"><input id="same" type="checkbox" checked> Use the same photos on all 6 strips</label>
+        <label class="check"><input id="cut-lines" type="checkbox" checked> Show cut lines</label>
+        <label for="paper">Paper</label>
+        <select id="paper">
+          <option value="letter">US Letter (8.5 × 11 in)</option>
+          <option value="a4">A4</option>
+        </select>
+        <p class="hint" id="size-hint"></p>
+        <button id="make-pdf" class="button primary big" type="button">Make PDF</button>
+        <p class="hint" id="pdf-status"></p>
+        <a id="pdf-link" class="button" hidden>Open PDF</a>
+        <hr>
+        <button id="start-over" class="button danger" type="button">Start over</button>
+    </section>
+
+  </main>
+
+  <script src="/vendor/pdf-lib.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
