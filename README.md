@@ -32,9 +32,9 @@ bottom), 5 to a page, ready to print and cut.
 When printing, choose **Actual size / 100%**, not "Fit to page", so the
 strips come out at exactly 2" × 6". The page is landscape (US Letter or A4)
 with 5 strips side by side. Each strip has 1 mm of bleed (extra background
-past the edge), and crop marks sit in the page margins above, below and
-beside the strips, lined up with the cut edges. Nothing is drawn on the strips
-themselves.
+past the edge). Crop marks sit in the page margins above, below and beside
+the strips, lined up with the cut edges, and a tiny crosshair on each strip
+corner shows exactly where to cut.
 
 ## Installing on CasaOS
 
