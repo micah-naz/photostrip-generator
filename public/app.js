@@ -709,13 +709,25 @@
     }
   }
 
-  // Crop marks: short black lines in the page margins, lined up with every strip's cut edges,
-  // running from the paper edge up to the bleed so nothing is drawn on the strips themselves.
+  // Crop marks: black lines in the page margins lined up with every strip's cut edges, plus a
+  // small crosshair on each strip corner (purple with a green dashed overlay, so it shows on
+  // light or dark backgrounds) marking exactly where the cuts meet.
   function drawCutLines(page, L) {
     const { rgb } = window.PDFLib;
-    const line = (x1, y1, x2, y2) => page.drawLine({
-      start: { x: x1, y: L.pageH - y1 }, end: { x: x2, y: L.pageH - y2 }, thickness: 0.5, color: rgb(0, 0, 0),
+    const line = (x1, y1, x2, y2, opts = {}) => page.drawLine({
+      start: { x: x1, y: L.pageH - y1 }, end: { x: x2, y: L.pageH - y2 }, thickness: 0.5, color: rgb(0, 0, 0), ...opts,
     });
+    const arm = 72 / 25.4; // crosshair arms reach 1 mm from the corner
+    const crosshair = (x, y) => {
+      const styles = [
+        { thickness: 0.78, color: rgb(0.32, 0, 0.82) },
+        { thickness: 0.78, color: rgb(0.68, 1, 0.18), dashArray: [0.57, 0.71] },
+      ];
+      for (const style of styles) {
+        line(x - arm, y, x + arm, y, style);
+        line(x, y - arm, x, y + arm, style);
+      }
+    };
     const top = Math.min(...L.cells.map((c) => c.y)) - L.bleed;
     const bottom = Math.max(...L.cells.map((c) => c.y + L.stripH)) + L.bleed;
     const left = Math.min(...L.cells.map((c) => c.x)) - L.bleed;
@@ -732,6 +744,11 @@
     for (const y of ys) {
       line(0, y, left, y);
       line(right, y, L.pageW, y);
+    }
+    for (const c of L.cells) {
+      for (const x of [c.x, c.x + L.stripW]) {
+        for (const y of [c.y, c.y + L.stripH]) crosshair(x, y);
+      }
     }
   }
 
