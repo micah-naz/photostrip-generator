@@ -5,7 +5,7 @@
 (() => {
   'use strict';
 
-  const MAX_STRIPS = 6; // most strips any paper size fits
+  const MAX_STRIPS = 5; // strips per page
   const SLOTS_PER_STRIP = 4;
   const MAX_PHOTO_SIDE = 2000; // photos are shrunk to this size to save memory
   const PRINT_DPI = 300;
@@ -19,6 +19,7 @@
   const PAGE_MARGIN = 18; // 0.25 inch, the edge most home printers can't print on
   const STRIP_W = 144; // classic photostrip: 2 inches wide...
   const STRIP_H = 432; // ...by 6 inches tall
+  const BLEED = 72 / 25.4; // 1 mm of extra background around each strip, trimmed off when cutting
 
   const COLORS = {
     bg: { white: '#ffffff', cream: '#f7f1e3', blush: '#f6e3e1', black: '#111111' },
@@ -182,12 +183,15 @@
     return `${sizePx}px ${family}`;
   }
 
+  // `bleed` (in the same units as W) extends the background past the strip's edges for printing.
   function drawStrip(ctx, W, strip, opts = {}) {
     const L = stripLayout(W);
     const dark = state.bg === 'black';
+    const bleed = opts.bleed || 0;
     ctx.save();
     ctx.fillStyle = COLORS.bg[state.bg];
-    ctx.fillRect(0, 0, L.W, L.H);
+    ctx.fillRect(0, 0, L.W + bleed * 2, L.H + bleed * 2);
+    ctx.translate(bleed, bleed);
 
     L.slots.forEach((slot, i) => {
       const t = strip.slots[i];
@@ -253,44 +257,30 @@
     ctx.restore();
   }
 
-  // Fit as many full-size 2" × 6" strips on the page as possible: a row of
-  // upright strips, plus strips turned sideways in any space left below.
+  // Place full-size 2" × 6" strips (plus their bleed) side by side, centered on the page.
   function pageLayout(paperKey) {
     const paper = PAPERS[paperKey] || PAPERS.letter;
+    const cellW = STRIP_W + BLEED * 2;
+    const cellH = STRIP_H + BLEED * 2;
     const fits = (space, size) => Math.floor((space + 0.01) / size);
     let best = null;
-    for (const [pageW, pageH] of [[paper.w, paper.h], [paper.h, paper.w]]) {
-      const usableW = pageW - PAGE_MARGIN * 2;
-      const usableH = pageH - PAGE_MARGIN * 2;
-      const maxRows = fits(usableH, STRIP_H);
-      for (let rows = 0; rows <= maxRows; rows++) {
-        const cols = rows ? fits(usableW, STRIP_W) : 0;
-        const sideCols = fits(usableW, STRIP_H);
-        const sideRows = fits(usableH - rows * STRIP_H, STRIP_W);
-        const count = Math.min(MAX_STRIPS, rows * cols + sideCols * sideRows);
-        const sideways = Math.max(0, count - rows * cols);
-        if (!best || count > best.count || (count === best.count && sideways < best.sideways)) {
-          best = { pageW, pageH, rows, cols, sideCols, sideRows, count, sideways };
-        }
-      }
+    for (const [pageW, pageH] of [[paper.h, paper.w], [paper.w, paper.h]]) {
+      const cols = fits(pageW - PAGE_MARGIN * 2, cellW);
+      const rows = fits(pageH - PAGE_MARGIN * 2, cellH);
+      const count = Math.min(MAX_STRIPS, cols * rows);
+      if (!best || count > best.count) best = { pageW, pageH, cols, count };
     }
-    const { pageW, pageH, rows, cols, sideCols, count } = best;
-    const upright = Math.min(count, rows * cols);
-    const sideways = count - upright;
-    const usedSideRows = Math.ceil(sideways / Math.max(1, sideCols));
-    const blockW = Math.max(Math.min(upright, cols) * STRIP_W, Math.min(sideways, sideCols) * STRIP_H);
-    const blockH = Math.ceil(upright / Math.max(1, cols)) * STRIP_H + usedSideRows * STRIP_W;
-    const left = (pageW - blockW) / 2;
-    const top = (pageH - blockH) / 2;
+    const { pageW, pageH, cols, count } = best;
+    const usedCols = Math.min(count, cols);
+    const usedRows = Math.ceil(count / cols);
+    const left = (pageW - usedCols * cellW) / 2;
+    const top = (pageH - usedRows * cellH) / 2;
     const cells = [];
-    for (let i = 0; i < upright; i++) {
-      cells.push({ x: left + (i % cols) * STRIP_W, y: top + Math.floor(i / cols) * STRIP_H, sideways: false });
+    for (let i = 0; i < count; i++) {
+      // x/y are the strip's trimmed top-left corner, measured from the page's top-left.
+      cells.push({ x: left + (i % cols) * cellW + BLEED, y: top + Math.floor(i / cols) * cellH + BLEED });
     }
-    const sideTop = top + Math.ceil(upright / Math.max(1, cols)) * STRIP_H;
-    for (let i = 0; i < sideways; i++) {
-      cells.push({ x: left + (i % sideCols) * STRIP_H, y: sideTop + Math.floor(i / sideCols) * STRIP_W, sideways: true });
-    }
-    return { pageW, pageH, stripW: STRIP_W, stripH: STRIP_H, cells };
+    return { pageW, pageH, stripW: STRIP_W, stripH: STRIP_H, bleed: BLEED, cells };
   }
 
   function stripCount() {
@@ -636,11 +626,8 @@
   });
 
   function updateSizeHint() {
-    const L = pageLayout(state.paper);
-    const n = L.cells.length;
-    const sideways = L.cells.filter((c) => c.sideways).length;
-    const turned = sideways ? ` (${sideways === 1 ? 'one is' : sideways + ' are'} turned sideways to fit)` : '';
-    $('size-hint').textContent = `${n} classic 2" × 6" strips fit on one page${turned}. Print at "Actual size" (100%), not "Fit to page".`;
+    const n = stripCount();
+    $('size-hint').textContent = `${n} classic 2" × 6" strips fit on one page, each with 1 mm of bleed. Print at "Actual size" (100%), not "Fit to page".`;
     $('same-label').textContent = `Use the same photos on all ${n} strips`;
   }
 
@@ -672,9 +659,10 @@
       const L = pageLayout(state.paper);
       const page = pdf.addPage([L.pageW, L.pageH]);
       const pxW = Math.round(L.stripW / 72 * PRINT_DPI);
+      const pxBleed = Math.round(L.bleed / 72 * PRINT_DPI);
       const c = document.createElement('canvas');
-      c.width = pxW;
-      c.height = pxW * 3;
+      c.width = pxW + pxBleed * 2;
+      c.height = pxW * 3 + pxBleed * 2;
       const cctx = c.getContext('2d');
       const prevSelected = selectedSlot;
       selectedSlot = null;
@@ -685,24 +673,20 @@
         status.textContent = `Drawing strip ${i + 1} of ${unique}…`;
         await new Promise((r) => setTimeout(r, 0));
         cctx.setTransform(1, 0, 0, 1, 0, 0);
-        drawStrip(cctx, pxW, stripAt(i));
+        drawStrip(cctx, pxW, stripAt(i), { bleed: pxBleed });
         const blob = await canvasToBlob(c, 'image/jpeg', 0.93);
         embedded.push(await pdf.embedJpg(await blob.arrayBuffer()));
       }
       selectedSlot = prevSelected;
 
-      const { degrees } = window.PDFLib;
       L.cells.forEach((cell, i) => {
-        const image = embedded[state.same ? 0 : i];
-        // PDF coordinates start at the bottom-left corner of the page.
-        if (cell.sideways) {
-          // Turned a quarter turn; pdf-lib rotates around the x/y point, so start from the right edge.
-          const y = L.pageH - cell.y - L.stripW;
-          page.drawImage(image, { x: cell.x + L.stripH, y, width: L.stripW, height: L.stripH, rotate: degrees(90) });
-        } else {
-          const y = L.pageH - cell.y - L.stripH;
-          page.drawImage(image, { x: cell.x, y, width: L.stripW, height: L.stripH });
-        }
+        // PDF coordinates start at the bottom-left corner of the page; the image includes the bleed.
+        page.drawImage(embedded[state.same ? 0 : i], {
+          x: cell.x - L.bleed,
+          y: L.pageH - cell.y - L.stripH - L.bleed,
+          width: L.stripW + L.bleed * 2,
+          height: L.stripH + L.bleed * 2,
+        });
       });
       if (state.cutLines) drawCutLines(page, L);
 
@@ -725,16 +709,29 @@
     }
   }
 
-  // A thin gray outline around every strip to cut along.
+  // Crop marks: short black lines in the page margins, lined up with every strip's cut edges,
+  // running from the paper edge up to the bleed so nothing is drawn on the strips themselves.
   function drawCutLines(page, L) {
     const { rgb } = window.PDFLib;
-    for (const cell of L.cells) {
-      const w = cell.sideways ? L.stripH : L.stripW;
-      const h = cell.sideways ? L.stripW : L.stripH;
-      page.drawRectangle({
-        x: cell.x, y: L.pageH - cell.y - h, width: w, height: h,
-        borderColor: rgb(0.72, 0.72, 0.72), borderWidth: 0.4,
-      });
+    const line = (x1, y1, x2, y2) => page.drawLine({
+      start: { x: x1, y: L.pageH - y1 }, end: { x: x2, y: L.pageH - y2 }, thickness: 0.5, color: rgb(0, 0, 0),
+    });
+    const top = Math.min(...L.cells.map((c) => c.y)) - L.bleed;
+    const bottom = Math.max(...L.cells.map((c) => c.y + L.stripH)) + L.bleed;
+    const left = Math.min(...L.cells.map((c) => c.x)) - L.bleed;
+    const right = Math.max(...L.cells.map((c) => c.x + L.stripW)) + L.bleed;
+    const xs = new Set(), ys = new Set();
+    for (const c of L.cells) {
+      xs.add(c.x); xs.add(c.x + L.stripW);
+      ys.add(c.y); ys.add(c.y + L.stripH);
+    }
+    for (const x of xs) {
+      line(x, 0, x, top);
+      line(x, bottom, x, L.pageH);
+    }
+    for (const y of ys) {
+      line(0, y, left, y);
+      line(right, y, L.pageW, y);
     }
   }
 

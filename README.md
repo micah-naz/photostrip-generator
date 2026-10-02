@@ -3,7 +3,7 @@
 A small web app you run on your own CasaOS server and use from your phone.
 Upload photos, arrange them in a strip, add a name and date, and download a
 PDF of classic **2" × 6" photostrips** (4 photos each, name and date at the
-bottom), ready to print and cut: 6 strips on US Letter, 5 on A4.
+bottom), 5 to a page, ready to print and cut.
 
 - Works in your phone's browser (no app store needed).
 - Protected by one password.
@@ -30,9 +30,11 @@ bottom), ready to print and cut: 6 strips on US Letter, 5 on A4.
    *Strip 1, 2, 3…* picker appears). Tap **Make PDF**.
 
 When printing, choose **Actual size / 100%**, not "Fit to page", so the
-strips come out at exactly 2" × 6". The page is landscape. On US Letter, five
-strips stand side by side and a sixth lies sideways underneath; on A4, five
-strips fit. Each strip has a thin gray outline to cut along.
+strips come out at exactly 2" × 6". The page is landscape (US Letter or A4)
+with 5 strips side by side. Each strip has 1 mm of bleed (extra background
+past the edge), and crop marks sit in the page margins above, below and
+beside the strips, lined up with the cut edges. Nothing is drawn on the strips
+themselves.
 
 ## Installing on CasaOS
 
