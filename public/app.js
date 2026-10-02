@@ -5,7 +5,7 @@
 (() => {
   'use strict';
 
-  const STRIP_COUNT = 6;
+  const MAX_STRIPS = 6; // most strips any paper size fits
   const SLOTS_PER_STRIP = 4;
   const MAX_PHOTO_SIDE = 2000; // photos are shrunk to this size to save memory
   const PRINT_DPI = 300;
@@ -16,7 +16,9 @@
     letter: { w: 612, h: 792, label: 'US Letter' },
     a4: { w: 595.28, h: 841.89, label: 'A4' },
   };
-  const PAGE_MARGIN = 18; // 0.25 inch
+  const PAGE_MARGIN = 18; // 0.25 inch, the edge most home printers can't print on
+  const STRIP_W = 144; // classic photostrip: 2 inches wide...
+  const STRIP_H = 432; // ...by 6 inches tall
 
   const COLORS = {
     bg: { white: '#ffffff', cream: '#f7f1e3', blush: '#f6e3e1', black: '#111111' },
@@ -38,7 +40,7 @@
   function defaultState() {
     return {
       photos: [], // [{ id, w, h }]
-      strips: Array.from({ length: STRIP_COUNT }, emptyStrip),
+      strips: Array.from({ length: MAX_STRIPS }, emptyStrip),
       same: true,
       current: 0,
       name: '',
@@ -251,25 +253,48 @@
     ctx.restore();
   }
 
-  // Lay out 6 strips on the page as big as they'll fit.
+  // Fit as many full-size 2" × 6" strips on the page as possible: a row of
+  // upright strips, plus strips turned sideways in any space left below.
   function pageLayout(paperKey) {
     const paper = PAPERS[paperKey] || PAPERS.letter;
+    const fits = (space, size) => Math.floor((space + 0.01) / size);
     let best = null;
-    for (const [pw, ph] of [[paper.w, paper.h], [paper.h, paper.w]]) {
-      for (const [cols, rows] of [[3, 2], [6, 1], [2, 3]]) {
-        const w = Math.min((pw - PAGE_MARGIN * 2) / cols, (ph - PAGE_MARGIN * 2) / rows / 3);
-        if (!best || w > best.stripW + 0.01) best = { pageW: pw, pageH: ph, cols, rows, stripW: w };
+    for (const [pageW, pageH] of [[paper.w, paper.h], [paper.h, paper.w]]) {
+      const usableW = pageW - PAGE_MARGIN * 2;
+      const usableH = pageH - PAGE_MARGIN * 2;
+      const maxRows = fits(usableH, STRIP_H);
+      for (let rows = 0; rows <= maxRows; rows++) {
+        const cols = rows ? fits(usableW, STRIP_W) : 0;
+        const sideCols = fits(usableW, STRIP_H);
+        const sideRows = fits(usableH - rows * STRIP_H, STRIP_W);
+        const count = Math.min(MAX_STRIPS, rows * cols + sideCols * sideRows);
+        const sideways = Math.max(0, count - rows * cols);
+        if (!best || count > best.count || (count === best.count && sideways < best.sideways)) {
+          best = { pageW, pageH, rows, cols, sideCols, sideRows, count, sideways };
+        }
       }
     }
-    const { pageW, pageH, cols, rows, stripW } = best;
-    const stripH = stripW * 3;
-    const left = (pageW - cols * stripW) / 2;
-    const top = (pageH - rows * stripH) / 2;
+    const { pageW, pageH, rows, cols, sideCols, count } = best;
+    const upright = Math.min(count, rows * cols);
+    const sideways = count - upright;
+    const usedSideRows = Math.ceil(sideways / Math.max(1, sideCols));
+    const blockW = Math.max(Math.min(upright, cols) * STRIP_W, Math.min(sideways, sideCols) * STRIP_H);
+    const blockH = Math.ceil(upright / Math.max(1, cols)) * STRIP_H + usedSideRows * STRIP_W;
+    const left = (pageW - blockW) / 2;
+    const top = (pageH - blockH) / 2;
     const cells = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) cells.push({ x: left + c * stripW, y: top + r * stripH });
+    for (let i = 0; i < upright; i++) {
+      cells.push({ x: left + (i % cols) * STRIP_W, y: top + Math.floor(i / cols) * STRIP_H, sideways: false });
     }
-    return { pageW, pageH, stripW, stripH, cells };
+    const sideTop = top + Math.ceil(upright / Math.max(1, cols)) * STRIP_H;
+    for (let i = 0; i < sideways; i++) {
+      cells.push({ x: left + (i % sideCols) * STRIP_H, y: sideTop + Math.floor(i / sideCols) * STRIP_W, sideways: true });
+    }
+    return { pageW, pageH, stripW: STRIP_W, stripH: STRIP_H, cells };
+  }
+
+  function stripCount() {
+    return pageLayout(state.paper).cells.length;
   }
 
   // ---------- Preview ----------
@@ -427,7 +452,7 @@
     $('copy-to-all').hidden = state.same;
     picker.innerHTML = '';
     if (state.same) return;
-    for (let i = 0; i < STRIP_COUNT; i++) {
+    for (let i = 0; i < stripCount(); i++) {
       const b = document.createElement('button');
       b.type = 'button';
       b.textContent = `Strip ${i + 1}`;
@@ -443,7 +468,7 @@
   }
 
   $('copy-to-all').addEventListener('click', () => {
-    if (!confirm(`Copy strip ${state.current + 1} onto all 6 strips? This replaces the photos on the others.`)) return;
+    if (!confirm(`Copy strip ${state.current + 1} onto all the other strips? This replaces the photos on the others.`)) return;
     const src = JSON.stringify(state.strips[state.current]);
     state.strips = state.strips.map(() => JSON.parse(src));
     renderTray();
@@ -547,7 +572,7 @@
   }
 
   function fillNextEmpty(id) {
-    const order = state.same ? [0] : [state.current, ...[...Array(STRIP_COUNT).keys()].filter((i) => i !== state.current)];
+    const order = state.same ? [0] : [state.current, ...[...Array(stripCount()).keys()].filter((i) => i !== state.current)];
     for (const s of order) {
       const slot = state.strips[s].slots.findIndex((t) => !t.photoId);
       if (slot !== -1) {
@@ -581,7 +606,11 @@
     $(id).addEventListener('input', async () => {
       state[key] = $(id).value;
       if (key === 'font') await loadFonts();
-      if (key === 'paper') updateSizeHint();
+      if (key === 'paper') {
+        updateSizeHint();
+        state.current = Math.min(state.current, stripCount() - 1);
+        renderStripPicker();
+      }
       drawPreview();
       saveSoon();
     });
@@ -608,8 +637,11 @@
 
   function updateSizeHint() {
     const L = pageLayout(state.paper);
-    const w = (L.stripW / 72).toFixed(2), h = (L.stripH / 72).toFixed(2);
-    $('size-hint').textContent = `Each strip prints ${w}" × ${h}". Print at "Actual size" (100%), not "Fit to page".`;
+    const n = L.cells.length;
+    const sideways = L.cells.filter((c) => c.sideways).length;
+    const turned = sideways ? ` (${sideways === 1 ? 'one is' : sideways + ' are'} turned sideways to fit)` : '';
+    $('size-hint').textContent = `${n} classic 2" × 6" strips fit on one page${turned}. Print at "Actual size" (100%), not "Fit to page".`;
+    $('same-label').textContent = `Use the same photos on all ${n} strips`;
   }
 
   async function loadFonts() {
@@ -626,8 +658,9 @@
   async function makePdf() {
     const status = $('pdf-status');
     const button = $('make-pdf');
-    const strips = Array.from({ length: STRIP_COUNT }, (_, i) => stripAt(i));
-    const empty = strips.reduce((n, s) => n + s.slots.filter((t) => !t.photoId).length, 0) / (state.same ? STRIP_COUNT : 1);
+    const count = stripCount();
+    const strips = Array.from({ length: state.same ? 1 : count }, (_, i) => stripAt(i));
+    const empty = strips.reduce((n, s) => n + s.slots.filter((t) => !t.photoId).length, 0);
     if (empty && !confirm(`${empty} photo spot${empty === 1 ? ' is' : 's are'} still empty. Make the PDF anyway?`)) return;
 
     button.disabled = true;
@@ -646,7 +679,7 @@
       const prevSelected = selectedSlot;
       selectedSlot = null;
 
-      const unique = state.same ? 1 : STRIP_COUNT;
+      const unique = state.same ? 1 : L.cells.length;
       const embedded = [];
       for (let i = 0; i < unique; i++) {
         status.textContent = `Drawing strip ${i + 1} of ${unique}…`;
@@ -658,10 +691,18 @@
       }
       selectedSlot = prevSelected;
 
+      const { degrees } = window.PDFLib;
       L.cells.forEach((cell, i) => {
-        // PDF coordinates start at the bottom-left corner.
-        const y = L.pageH - cell.y - L.stripH;
-        page.drawImage(embedded[state.same ? 0 : i], { x: cell.x, y, width: L.stripW, height: L.stripH });
+        const image = embedded[state.same ? 0 : i];
+        // PDF coordinates start at the bottom-left corner of the page.
+        if (cell.sideways) {
+          // Turned a quarter turn; pdf-lib rotates around the x/y point, so start from the right edge.
+          const y = L.pageH - cell.y - L.stripW;
+          page.drawImage(image, { x: cell.x + L.stripH, y, width: L.stripW, height: L.stripH, rotate: degrees(90) });
+        } else {
+          const y = L.pageH - cell.y - L.stripH;
+          page.drawImage(image, { x: cell.x, y, width: L.stripW, height: L.stripH });
+        }
       });
       if (state.cutLines) drawCutLines(page, L);
 
@@ -684,18 +725,17 @@
     }
   }
 
-  // Thin gray lines along every strip edge, running to the paper edges so they're easy to cut along.
+  // A thin gray outline around every strip to cut along.
   function drawCutLines(page, L) {
     const { rgb } = window.PDFLib;
-    const color = rgb(0.72, 0.72, 0.72);
-    const xs = new Set(), ys = new Set();
     for (const cell of L.cells) {
-      xs.add(cell.x); xs.add(cell.x + L.stripW);
-      ys.add(cell.y); ys.add(cell.y + L.stripH);
+      const w = cell.sideways ? L.stripH : L.stripW;
+      const h = cell.sideways ? L.stripW : L.stripH;
+      page.drawRectangle({
+        x: cell.x, y: L.pageH - cell.y - h, width: w, height: h,
+        borderColor: rgb(0.72, 0.72, 0.72), borderWidth: 0.4,
+      });
     }
-    const thickness = 0.4;
-    for (const x of xs) page.drawLine({ start: { x, y: 0 }, end: { x, y: L.pageH }, thickness, color });
-    for (const y of ys) page.drawLine({ start: { x: 0, y: L.pageH - y }, end: { x: L.pageW, y: L.pageH - y }, thickness, color });
   }
 
   $('make-pdf').addEventListener('click', makePdf);
@@ -745,7 +785,7 @@
       }
     }
     if (!PAPERS[state.paper]) state.paper = defaultPaper;
-    state.current = state.same ? 0 : clamp(state.current || 0, 0, STRIP_COUNT - 1);
+    state.current = state.same ? 0 : clamp(state.current || 0, 0, stripCount() - 1);
 
     syncForm();
     renderStripPicker();
