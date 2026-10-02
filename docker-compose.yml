@@ -1,0 +1,33 @@
+# Import this file in CasaOS: App Store > Custom Install (the "+" icon) > Import.
+# Before you install, change APP_PASSWORD to your own password.
+name: photostrip-generator
+
+services:
+  photostrip:
+    image: ghcr.io/micah-naz/photostrip-generator:latest
+    container_name: photostrip-generator
+    restart: unless-stopped
+    ports:
+      - "8090:3000"
+    environment:
+      # The password you type on your phone to log in. CHANGE THIS.
+      APP_PASSWORD: change-me
+      # Paper size for the PDF: letter or a4 (you can also switch it in the app).
+      PAPER_SIZE: letter
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: photostrip
+  author: micah
+  category: Utilities
+  description:
+    en_us: Make printable photostrips (6 per page, 4 photos each) from your phone.
+  tagline:
+    en_us: Photostrips from your phone
+  title:
+    en_us: Photostrips
+  port_map: "8090"
+  scheme: http
+  index: /
